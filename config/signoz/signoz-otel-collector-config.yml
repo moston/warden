@@ -1,0 +1,162 @@
+connectors:
+  signozmeter:
+    metrics_flush_interval: 1h
+    dimensions:
+      - name: service.name
+      - name: deployment.environment
+      - name: host.name
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  filelog/docker:
+    include:
+      - /var/lib/docker/containers/*/*-json.log
+    poll_interval: 200ms
+    start_at: end
+    include_file_name: false
+    include_file_path: false
+    operators:
+      - id: container-parser
+        type: container
+        format: docker
+        add_metadata_from_filepath: false
+      - id: extract-service-name
+        type: regex_parser
+        parse_from: body
+        regex: 'service.name":\s*"(?P<svc>[^"]+)"'
+      - id: set-service-name
+        type: move
+        from: attributes.svc
+        to: resource["service.name"]
+        if: 'attributes.svc != nil'
+      - type: filter
+        expr: 'not (resource["container.name"] matches "php-fpm|nginx")'
+  filelog/magento:
+    include:
+      - /sites/*/var/log/exception.log
+      - /sites/*/var/log/system.log
+    start_at: end
+    include_file_path: true
+    include_file_name: false
+    operators:
+      - type: add
+        field: resource["service.name"]
+        value: magento
+      - type: add
+        field: attributes["log.level"]
+        value: error
+        if: 'attributes["log.file.path"] contains "exception.log"'
+      - type: add
+        field: resource["deployment.environment"]
+        value: '${env:ENV_NAME}'
+  prometheus:
+    config:
+      global:
+        scrape_interval: 60s
+      scrape_configs:
+        - job_name: otel-collector
+          static_configs:
+            - targets:
+                - localhost:8888
+              labels:
+                job_name: otel-collector
+
+processors:
+  transform/db_semconv_compat:
+    trace_statements:
+      - context: span
+        statements:
+          # nowe semconv (db.system.name) → stare (db.system) którego SigNoz używa do mapy serwisów
+          - set(attributes["db.system"], attributes["db.system.name"]) where attributes["db.system.name"] != nil and attributes["db.system"] == nil
+          # db.namespace (nowe) → db.name (stare)
+          - set(attributes["db.name"], attributes["db.namespace"]) where attributes["db.namespace"] != nil and attributes["db.name"] == nil
+          # peer.service z nazwy bazy lub systemu
+          - set(attributes["peer.service"], attributes["db.namespace"]) where attributes["db.system.name"] != nil and attributes["db.namespace"] != nil and attributes["peer.service"] == nil
+          - set(attributes["peer.service"], attributes["db.system.name"]) where attributes["db.system.name"] != nil and attributes["peer.service"] == nil
+  batch:
+    send_batch_size: 10000
+    send_batch_max_size: 11000
+    timeout: 10s
+  batch/meter:
+    send_batch_max_size: 25000
+    send_batch_size: 20000
+    timeout: 1s
+  resourcedetection:
+    detectors: [env, system]
+    timeout: 2s
+  signozspanmetrics/delta:
+    metrics_exporter: signozclickhousemetrics
+    metrics_flush_interval: 60s
+    latency_histogram_buckets: [100us, 1ms, 2ms, 6ms, 10ms, 50ms, 100ms, 250ms, 500ms, 1000ms, 1400ms, 2000ms, 5s, 10s, 20s, 40s, 60s]
+    dimensions_cache_size: 100000
+    aggregation_temporality: AGGREGATION_TEMPORALITY_DELTA
+    enable_exp_histogram: true
+    dimensions:
+      - name: service.namespace
+        default: default
+      - name: deployment.environment
+        default: default
+      - name: signoz.collector.id
+      - name: service.version
+      - name: host.name
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  pprof:
+    endpoint: 0.0.0.0:1777
+
+exporters:
+  clickhousetraces:
+    datasource: tcp://signoz-clickhouse:9000/signoz_traces
+    low_cardinal_exception_grouping: false
+    use_new_schema: true
+  signozclickhousemetrics:
+    dsn: tcp://signoz-clickhouse:9000/signoz_metrics
+  clickhouselogsexporter:
+    dsn: tcp://signoz-clickhouse:9000/signoz_logs
+    timeout: 10s
+    use_new_schema: true
+  signozclickhousemeter:
+    dsn: tcp://signoz-clickhouse:9000/signoz_meter
+    timeout: 45s
+    sending_queue:
+      enabled: false
+  metadataexporter:
+    cache:
+      provider: in_memory
+    dsn: tcp://signoz-clickhouse:9000/signoz_metadata
+    enabled: true
+    timeout: 45s
+
+service:
+  telemetry:
+    logs:
+      encoding: json
+  extensions: [health_check, pprof]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [transform/db_semconv_compat, signozspanmetrics/delta, batch]
+      exporters: [clickhousetraces, metadataexporter, signozmeter]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [signozclickhousemetrics, metadataexporter, signozmeter]
+    metrics/prometheus:
+      receivers: [prometheus]
+      processors: [batch]
+      exporters: [signozclickhousemetrics, metadataexporter, signozmeter]
+    logs:
+      receivers: [otlp, filelog/magento, filelog/docker]
+      processors: [batch]
+      exporters: [clickhouselogsexporter, metadataexporter, signozmeter]
+    metrics/meter:
+      receivers: [signozmeter]
+      processors: [batch/meter]
+      exporters: [signozclickhousemeter]

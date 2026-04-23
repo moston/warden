@@ -35,6 +35,22 @@ export WARDEN_DOCKER_SOCK="${WARDEN_DOCKER_SOCK:-/var/run/docker.sock}"
 DOCKER_COMPOSE_ARGS+=("-f")
 DOCKER_COMPOSE_ARGS+=("${WARDEN_DIR}/docker/docker-compose.mailpit.yml")
 
+## add observability (SigNoz) docker-compose
+WARDEN_OBSERVABILITY_ENABLE="${WARDEN_OBSERVABILITY_ENABLE:-1}"
+if [[ "$WARDEN_OBSERVABILITY_ENABLE" == "1" ]]; then
+    DOCKER_COMPOSE_ARGS+=("-f")
+    DOCKER_COMPOSE_ARGS+=("${WARDEN_DIR}/docker/docker-compose.observability.yml")
+
+    if [[ ! -d "${WARDEN_HOME_DIR}/etc/signoz" ]]; then
+        mkdir -p "${WARDEN_HOME_DIR}/etc/signoz"
+    fi
+
+    ## copy configuration files into location where they'll be mounted into containers from
+    if [[ ! -f "${WARDEN_HOME_DIR}/etc/signoz/signoz-otel-collector-config.yml" ]]; then
+        cp -R "${WARDEN_DIR}/config/signoz/" "${WARDEN_HOME_DIR}/etc/signoz/"
+    fi
+fi
+
 ## add dnsmasq docker-compose
 WARDEN_DNSMASQ_ENABLE="${WARDEN_DNSMASQ_ENABLE:-1}"
 if [[ "$WARDEN_DNSMASQ_ENABLE" == "1" ]]; then

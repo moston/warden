@@ -36,7 +36,7 @@ DOCKER_COMPOSE_ARGS+=("-f")
 DOCKER_COMPOSE_ARGS+=("${WARDEN_DIR}/docker/docker-compose.mailpit.yml")
 
 ## add observability (SigNoz) docker-compose
-WARDEN_OBSERVABILITY_ENABLE="${WARDEN_OBSERVABILITY_ENABLE:-1}"
+WARDEN_OBSERVABILITY_ENABLE="${WARDEN_OBSERVABILITY_ENABLE:-0}"
 if [[ "$WARDEN_OBSERVABILITY_ENABLE" == "1" ]]; then
     DOCKER_COMPOSE_ARGS+=("-f")
     DOCKER_COMPOSE_ARGS+=("${WARDEN_DIR}/docker/docker-compose.observability.yml")

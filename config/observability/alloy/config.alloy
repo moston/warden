@@ -1,0 +1,60 @@
+// Grafana Alloy — jeden kolektor dla calego stacku observability.
+// Zastepuje OTel Collector + Promtail: przyjmuje traces (OTLP) i zbiera logi
+// kontenerow wszystkich srodowisk Warden.
+
+// ── Traces: OTLP (od aplikacji) → Tempo ──────────────────────────────────
+// Globalny kolektor obsluguje wiele srodowisk jednoczesnie, wiec kazda
+// aplikacja sama ustawia deployment.environment (resource attribute) w swojej
+// instrumentacji OTel. Kolektor tylko przekazuje trace'y do Tempo.
+otelcol.receiver.otlp "default" {
+  grpc { endpoint = "0.0.0.0:4317" }
+  http { endpoint = "0.0.0.0:4318" }
+  output {
+    traces = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+    tls { insecure = true }
+  }
+}
+
+// ── Logi kontenerow Docker (wszystkie srodowiska) → Loki ─────────────────
+discovery.docker "warden" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "warden" {
+  targets = discovery.docker.warden.targets
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "env_name"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "component"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_observability_service"]
+    target_label  = "service"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+}
+
+loki.source.docker "warden" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.warden.output
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

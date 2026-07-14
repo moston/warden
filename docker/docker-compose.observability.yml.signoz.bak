@@ -1,0 +1,96 @@
+services:
+  signoz-zookeeper:
+    image: signoz/zookeeper:3.9.3
+    container_name: signoz-zookeeper
+    networks: [warden]
+    restart: ${WARDEN_RESTART_POLICY:-always}
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+    volumes:
+      - signoz-zookeeper:/bitnami/zookeeper
+
+  signoz-clickhouse:
+    image: clickhouse/clickhouse-server:26.2.15.4-alpine
+    container_name: signoz-clickhouse
+    networks: [warden]
+    restart: ${WARDEN_RESTART_POLICY:-always}
+    volumes:
+      - signoz-clickhouse:/var/lib/clickhouse
+      - ./etc/signoz/signoz-clickhouse-config.xml:/etc/clickhouse-server/config.d/cluster.xml
+      - ./etc/signoz/signoz-clickhouse-users.xml:/etc/clickhouse-server/users.d/default-user.xml
+    depends_on: [signoz-zookeeper]
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  signoz-schema-migrator:
+    image: signoz/signoz-otel-collector:v0.144.3
+    container_name: signoz-schema-migrator
+    networks: [warden]
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        /signoz-otel-collector migrate bootstrap \
+          --clickhouse-dsn tcp://signoz-clickhouse:9000 \
+          --clickhouse-replication=false &&
+        /signoz-otel-collector migrate sync up \
+          --clickhouse-dsn tcp://signoz-clickhouse:9000 \
+          --clickhouse-replication=false \
+          --timeout 5m
+    depends_on:
+      signoz-clickhouse:
+        condition: service_healthy
+
+  signoz:
+    image: signoz/signoz:${SIGNOZ_VERSION:-latest}
+    container_name: signoz
+    networks: [warden]
+    restart: ${WARDEN_RESTART_POLICY:-always}
+    ports:
+      - "3301:8080"
+    volumes:
+      - signoz-db:/var/lib/signoz
+    environment:
+      - SIGNOZ_ALERTMANAGER_PROVIDER=signoz
+      - SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN=tcp://signoz-clickhouse:9000
+      - SIGNOZ_SQLSTORE_SQLITE_PATH=/var/lib/signoz/signoz.db
+      - SIGNOZ_TOKENIZER_JWT_SECRET=${SIGNOZ_JWT_SECRET:-changeme-use-random-secret}
+    depends_on:
+      signoz-schema-migrator:
+        condition: service_completed_successfully
+
+  signoz-otel-collector:
+    image: signoz/signoz-otel-collector:v0.144.3
+    container_name: signoz-otel-collector
+    user: root
+    networks: [warden]
+    restart: ${WARDEN_RESTART_POLICY:-always}
+    command:
+      - --config=/etc/otel/config.yaml
+      - --copy-path=/var/tmp/collector-config.yaml
+    ports:
+      - "4319:4317"   # gRPC
+      - "4320:4318"   # HTTP
+    volumes:
+      - ./etc/signoz/signoz-otel-collector-config.yml:/etc/otel/config.yaml
+      - ${WARDEN_SITES_DIR:-/Users/moston/sites}:/sites:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      signoz-schema-migrator:
+        condition: service_completed_successfully
+
+volumes:
+  signoz-zookeeper:
+  signoz-clickhouse:
+  signoz-db:
+
+networks:
+  warden:
+    external: true

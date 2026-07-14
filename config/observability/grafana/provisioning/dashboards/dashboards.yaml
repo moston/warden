@@ -1,0 +1,15 @@
+apiVersion: 1
+
+# Dashboardy (JSON) upuszczone w tym katalogu sa automatycznie ladowane.
+# Miejsce na community dashboardy dla span-metrics / infra oraz wlasne APM.
+providers:
+  - name: warden-observability
+    orgId: 1
+    folder: Warden
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: true

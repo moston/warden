@@ -1,0 +1,35 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Prometheus sam siebie
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Auto-discovery kontenerow wszystkich srodowisk Warden.
+  # Scrapuje tylko kontenery z labelem observability.scrape=true (exportery),
+  # rozroznia srodowiska przez com.docker.compose.project -> env_name.
+  - job_name: warden-containers
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 15s
+    relabel_configs:
+      # tylko kontenery jawnie oznaczone do scrapowania
+      - source_labels: [__meta_docker_container_label_observability_scrape]
+        regex: 'true'
+        action: keep
+      # env_name z nazwy projektu docker compose (WARDEN_ENV_NAME)
+      - source_labels: [__meta_docker_container_label_com_docker_compose_project]
+        target_label: env_name
+      # komponent infrastrukturalny (php-fpm, db, redis...)
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: component
+      # serwis ekosystemu (magento, price-server, maptica...) z custom labela
+      - source_labels: [__meta_docker_container_label_observability_service]
+        target_label: service
+      # czytelna nazwa kontenera
+      - source_labels: [__meta_docker_container_name]
+        regex: '/(.*)'
+        target_label: container

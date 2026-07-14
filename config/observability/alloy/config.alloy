@@ -10,6 +10,24 @@ otelcol.receiver.otlp "default" {
   grpc { endpoint = "0.0.0.0:4317" }
   http { endpoint = "0.0.0.0:4318" }
   output {
+    traces = [otelcol.processor.filter.drop_self_telemetry.input]
+  }
+}
+
+// Odsiewa "self-telemetry" eksporterow OTLP: gdy auto-instrumentacja HTTP
+// (np. PHP auto-guzzle) instrumentuje wlasne wywolania eksportera do collectora,
+// powstaja spany CLIENT "POST /v1/traces" -> petla sprzezenia i szum. Robimy to
+// centralnie, wiec dotyczy kazdego serwisu (PHP/Node/...) bez zmian w aplikacjach.
+otelcol.processor.filter "drop_self_telemetry" {
+  error_mode = "ignore"
+  traces {
+    span = [
+      "attributes[\"url.path\"] == \"/v1/traces\"",
+      "attributes[\"url.path\"] == \"/v1/metrics\"",
+      "attributes[\"url.path\"] == \"/v1/logs\"",
+    ]
+  }
+  output {
     traces = [otelcol.exporter.otlp.tempo.input]
   }
 }

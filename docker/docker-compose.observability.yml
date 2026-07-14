@@ -91,12 +91,52 @@ services:
       - traefik.http.services.alloy.loadbalancer.server.port=12345
     depends_on: [tempo, loki]
 
+  # ── Percona PMM — Query Analytics dla MySQL ────────────────────────────
+  # Serwer stoi globalnie; instancje MySQL kazdego srodowiska rejestruje sie
+  # osobno (pmm-admin add mysql / Faza 4 integracji z b/dev-env). Do czasu
+  # rejestracji QAN nie pokazuje danych. Domyslny login: admin / admin
+  # (PMM wymusi zmiane hasla przy pierwszym logowaniu).
+  pmm:
+    image: percona/pmm-server:${PMM_VERSION:-3.8.1}
+    container_name: pmm
+    # PMM Server jest wydawany tylko dla amd64; na Apple Silicon idzie pod emulacja
+    platform: linux/amd64
+    networks: [warden]
+    restart: ${WARDEN_RESTART_POLICY:-always}
+    volumes:
+      - pmm-data:/srv
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.pmm.tls=true
+      - traefik.http.routers.pmm.rule=Host(`pmm.${WARDEN_SERVICE_DOMAIN:-warden.test}`)
+      - traefik.http.services.pmm.loadbalancer.server.port=8080
+
+  # ── k6 — testy obciazeniowe (uruchamiane ad-hoc) ───────────────────────
+  # profiles: ["k6"] => NIE startuje z `warden svc up`; odpalasz na zadanie:
+  #   docker compose -p warden --project-directory ~/.warden \
+  #     -f <repo>/docker/docker-compose.observability.yml \
+  #     run --rm -e BASE_URL=https://app.master.test -e ENV_NAME=master \
+  #     k6 run -o experimental-prometheus-rw /scripts/example.js
+  # Wyniki trafiaja do Prometheusa (remote-write) i sa widoczne w Grafanie.
+  k6:
+    image: grafana/k6:${K6_VERSION:-2.1.0}
+    container_name: k6
+    profiles: ["k6"]
+    networks: [warden]
+    environment:
+      - K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write
+      - K6_PROMETHEUS_RW_TREND_STATS=p(95),p(99),min,max,avg
+      - K6_FEATURES=native-histograms
+    volumes:
+      - ./etc/observability/k6:/scripts:ro
+
 volumes:
   grafana-data:
   prometheus-data:
   loki-data:
   tempo-data:
   alloy-data:
+  pmm-data:
 
 networks:
   warden:

@@ -29,6 +29,9 @@ if [[ -f "${WARDEN_HOME_DIR}/.env" ]]; then
 
     # Check PMA
     eval "$(grep "^WARDEN_PHPMYADMIN_ENABLE" "${WARDEN_HOME_DIR}/.env")"
+
+    # Check Observability
+    eval "$(grep "^WARDEN_OBSERVABILITY_ENABLE" "${WARDEN_HOME_DIR}/.env")"
 fi
 
 export WARDEN_DOCKER_SOCK="${WARDEN_DOCKER_SOCK:-/var/run/docker.sock}"
@@ -41,14 +44,14 @@ if [[ "$WARDEN_OBSERVABILITY_ENABLE" == "1" ]]; then
     DOCKER_COMPOSE_ARGS+=("-f")
     DOCKER_COMPOSE_ARGS+=("${WARDEN_DIR}/docker/docker-compose.observability.yml")
 
-    if [[ ! -d "${WARDEN_HOME_DIR}/etc/observability" ]]; then
-        mkdir -p "${WARDEN_HOME_DIR}/etc/observability"
-    fi
+    mkdir -p "${WARDEN_HOME_DIR}/etc/observability"
 
-    ## copy configuration files into location where they'll be mounted into containers from
-    if [[ ! -f "${WARDEN_HOME_DIR}/etc/observability/prometheus/prometheus.yml" ]]; then
-        cp -R "${WARDEN_DIR}/config/observability/" "${WARDEN_HOME_DIR}/etc/observability/"
-    fi
+    ## sync configuration files into the location they are mounted from.
+    ## copied on EVERY invocation (not once) so edits and new files in
+    ## config/observability propagate to the containers on the next `svc up`.
+    ## Repo is the source of truth — do not hand-edit files under
+    ## ${WARDEN_HOME_DIR}/etc/observability, they will be overwritten.
+    cp -R "${WARDEN_DIR}/config/observability/." "${WARDEN_HOME_DIR}/etc/observability/"
 fi
 
 ## add dnsmasq docker-compose

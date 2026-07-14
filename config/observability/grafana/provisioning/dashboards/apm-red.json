@@ -9,7 +9,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "refresh": "10s",
   "time": {
     "from": "now-1h",
@@ -455,6 +455,18 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "avg (s)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "rate (req/s)"
             },
             "properties": [
@@ -487,6 +499,16 @@
           "expr": "sum by (span_name) (rate(traces_spanmetrics_calls_total{service_name=~\"$service\",span_kind=\"SPAN_KIND_SERVER\",span_name!~\".*/(static|media)/.*\"}[$__rate_interval]))"
         },
         {
+          "refId": "avg",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "format": "table",
+          "instant": true,
+          "expr": "sum by (span_name) (rate(traces_spanmetrics_latency_sum{service_name=~\"$service\",span_kind=\"SPAN_KIND_SERVER\",span_name!~\".*/(static|media)/.*\"}[$__rate_interval])) / sum by (span_name) (rate(traces_spanmetrics_latency_count{service_name=~\"$service\",span_kind=\"SPAN_KIND_SERVER\",span_name!~\".*/(static|media)/.*\"}[$__rate_interval]))"
+        },
+        {
           "refId": "p95",
           "datasource": {
             "type": "prometheus",
@@ -511,6 +533,7 @@
             "renameByName": {
               "span_name": "Span",
               "Value #rate": "rate (req/s)",
+              "Value #avg": "avg (s)",
               "Value #p95": "p95 (s)"
             }
           }
@@ -671,6 +694,18 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "avg (s)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "rate (req/s)"
             },
             "properties": [
@@ -703,6 +738,16 @@
           "expr": "sum by (span_name) (rate(traces_spanmetrics_calls_total{service_name=~\"$service\",span_kind=~\"SPAN_KIND_CLIENT|SPAN_KIND_INTERNAL\"}[$__rate_interval]))"
         },
         {
+          "refId": "avg",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "format": "table",
+          "instant": true,
+          "expr": "sum by (span_name) (rate(traces_spanmetrics_latency_sum{service_name=~\"$service\",span_kind=~\"SPAN_KIND_CLIENT|SPAN_KIND_INTERNAL\"}[$__rate_interval])) / sum by (span_name) (rate(traces_spanmetrics_latency_count{service_name=~\"$service\",span_kind=~\"SPAN_KIND_CLIENT|SPAN_KIND_INTERNAL\"}[$__rate_interval]))"
+        },
+        {
           "refId": "p95",
           "datasource": {
             "type": "prometheus",
@@ -727,6 +772,7 @@
             "renameByName": {
               "span_name": "Span",
               "Value #rate": "rate (req/s)",
+              "Value #avg": "avg (s)",
               "Value #p95": "p95 (s)"
             }
           }

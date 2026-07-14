@@ -17,7 +17,10 @@ services:
       - GF_PLUGINS_PREINSTALL_DISABLED=true
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./etc/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      # montujemy tylko nasze podkatalogi provisioningu — plugins/alerting itd.
+      # zostaja domyslne z obrazu (inaczej Grafana zglasza "directory not found")
+      - ./etc/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./etc/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
     labels:
       - traefik.enable=true
       - traefik.http.routers.grafana.tls=true

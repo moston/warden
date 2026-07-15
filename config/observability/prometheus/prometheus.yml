@@ -20,6 +20,13 @@ scrape_configs:
       - source_labels: [__meta_docker_container_label_observability_scrape]
         regex: 'true'
         action: keep
+      # docker_sd zwraca IP sieci env (nieosiagalne dla Prometheusa na `warden`),
+      # wiec scrapujemy po NAZWIE kontenera + porcie z labela observability.port —
+      # Docker DNS w sieci warden rozwiazuje nazwe do IP osiagalnego z Prometheusa.
+      - source_labels: [__meta_docker_container_name, __meta_docker_container_label_observability_port]
+        regex: '/(.+);(.+)'
+        target_label: __address__
+        replacement: '$1:$2'
       # env_name z nazwy projektu docker compose (WARDEN_ENV_NAME)
       - source_labels: [__meta_docker_container_label_com_docker_compose_project]
         target_label: env_name

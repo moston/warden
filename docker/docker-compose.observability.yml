@@ -21,6 +21,7 @@ services:
       # zostaja domyslne z obrazu (inaczej Grafana zglasza "directory not found")
       - ./etc/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
       - ./etc/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./etc/observability/grafana/provisioning/alerting:/etc/grafana/provisioning/alerting:ro
     labels:
       - traefik.enable=true
       - traefik.http.routers.grafana.tls=true

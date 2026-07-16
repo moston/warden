@@ -29,6 +29,13 @@ export WARDEN_IMAGE_REPOSITORY="${WARDEN_IMAGE_REPOSITORY:-"docker.io/wardenenv"
 
 export WARDEN_DOCKER_USERNS_MODE="${WARDEN_DOCKER_USERNS_MODE:-host}"
 
+## when observability is enabled, activate the "observability" compose profile
+## so per-env sidecars (exporters, pmm-client) tagged with that profile in
+## warden-env.yml start only for this flag (like svc.cmd gates the global stack)
+if [[ "${WARDEN_OBSERVABILITY_ENABLE:-0}" == "1" ]]; then
+    export COMPOSE_PROFILES="${COMPOSE_PROFILES:+${COMPOSE_PROFILES},}observability"
+fi
+
 ## configure environment type defaults
 if [[ ${WARDEN_ENV_TYPE} =~ ^magento ]]; then
     export WARDEN_SVC_PHP_VARIANT=-${WARDEN_ENV_TYPE}
